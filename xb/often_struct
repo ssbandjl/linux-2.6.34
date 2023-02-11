@@ -1,0 +1,219 @@
+[often_stuct, 常用结构]
+
+
+struct inode {
+	struct hlist_node	i_hash;
+	struct list_head	i_list;		/* backing dev IO list */
+	struct list_head	i_sb_list;
+	struct list_head	i_dentry;
+	unsigned long		i_ino;
+	atomic_t		i_count;      // 使用计数器,如多少进程使用该inode
+	unsigned int		i_nlink;      //硬链接计数器
+	uid_t			i_uid;      //用户id
+	gid_t			i_gid;      //组id
+	dev_t			i_rdev;       //目标设备
+	unsigned int		i_blkbits;
+	u64			i_version;
+	loff_t			i_size;    //文件长度(多少字节)
+#ifdef __NEED_I_SIZE_ORDERED
+	seqcount_t		i_size_seqcount;
+#endif
+	struct timespec		i_atime;    //最后访问时间
+	struct timespec		i_mtime;    //最后修改时间
+	struct timespec		i_ctime;    //最后修改inode的时间
+	blkcnt_t		i_blocks;         //文件长度(多少块, 比如每块4KB)
+	unsigned short          i_bytes;
+	umode_t			i_mode;         //文件类型和访问权限
+	spinlock_t		i_lock;	/* i_blocks, i_bytes, maybe i_size */
+	struct mutex		i_mutex;
+	struct rw_semaphore	i_alloc_sem;
+	const struct inode_operations	*i_op;
+	const struct file_operations	*i_fop;	/* former ->i_op->default_file_ops */
+	struct super_block	*i_sb;
+	struct file_lock	*i_flock;
+	struct address_space	*i_mapping;
+	struct address_space	i_data;
+#ifdef CONFIG_QUOTA
+	struct dquot		*i_dquot[MAXQUOTAS];
+#endif
+	struct list_head	i_devices;   //设备链
+	union {                             //特殊设备联合体
+		struct pipe_inode_info	*i_pipe;   //管道
+		struct block_device	*i_bdev;   //块
+		struct cdev		*i_cdev;      //字符设备
+	};
+
+	__u32			i_generation;
+
+#ifdef CONFIG_FSNOTIFY
+	__u32			i_fsnotify_mask; /* all events this inode cares about */
+	struct hlist_head	i_fsnotify_mark_entries; /* fsnotify mark entries */
+#endif
+
+#ifdef CONFIG_INOTIFY
+	struct list_head	inotify_watches; /* watches on this inode */
+	struct mutex		inotify_mutex;	/* protects the watches list */
+#endif
+
+	unsigned long		i_state;
+	unsigned long		dirtied_when;	/* jiffies of first dirtying */
+
+	unsigned int		i_flags;
+
+	atomic_t		i_writecount;
+#ifdef CONFIG_SECURITY
+	void			*i_security;
+#endif
+#ifdef CONFIG_FS_POSIX_ACL
+	struct posix_acl	*i_acl;
+	struct posix_acl	*i_default_acl;
+#endif
+	void			*i_private; /* fs or device private pointer */
+};
+
+
+
+file_operations
+inode_operations
+
+
+struct dentry
+可表示文件名或目录, 文件名与inode之间的关联
+
+
+LIST_HEAD(inode_unused);
+
+
+static struct hlist_head *inode_hashtable __read_mostly;
+由此可见,我们可以将经常需要被读取的数据定义为 __read_mostly类型，这样Linux内核被加时，该数据将自动被存放到Cache中，以提高整个系统的执行效率。另一方面，如果所在的平台没Cache，或者虽然有Cache，但并不提供存放数据的接口(也就是并不允许人工放置数据在Cache中)这样定义为 __read_mostly类型的数据将不能存放在Linux内核中，甚至也不能够被加载到系统内去执行，将造成Linux 内核启动失败
+
+
+inode也出现在散列表中, 支持根据inode和超级块快速访问inode
+
+初始化过程: fs/inode.c -> inode_init
+
+查看散列表数组长度(基于物理内存计算)
+root@ks0:~# dmesg|grep -i "inode-cache"
+[    0.128555] Inode-cache hash table entries: 8388608 (order: 14, 67108864 bytes)
+
+
+计算散列和, 将inode编号和超级块对象地址合并为一个唯一的编号, 碰撞溢出链表
+
+
+进程与文件
+/* filesystem information */
+	struct fs_struct *fs;
+/* open file information */
+	struct files_struct *files;
+
+每个容器的装载点
+nsproxy -> struct mnt_namespace *mnt_ns -> 
+
+
+文件对象
+struct files_struct *files
+<fdtable.h>
+struct files_struct {
+}
+
+文件最重要的信息
+struct fdtable {
+	unsigned int max_fds;
+	struct file ** fd;      /* current fd array */
+	fd_set *close_on_exec;
+	fd_set *open_fds;
+	struct rcu_head rcu;    //RCU机制, 无锁, 加速
+	struct fdtable *next;
+};
+
+
+RCU(Read-Copy Update)，是Linux 中比较重要的一种同步机制。 顾名思义就是“读，拷贝更新”，再直白点是“随意读，但更新数据的时候，需要先复制一份副本，在副本上完成修改，再一次性地替换旧数据”。 这是Linux 内核实现的一种针对“读多写少”的共享数据的同步机制
+
+RCU 的一个典型的应用场景是链表，在 Linux kernel 中还专门提供了一个头文件（include/linux/rculist.h），提供了利用 RCU 机制对链表进行增删查改操作的接口。本文将通过一个例子，利用 rculist.h 提供的接口对链表进行增删查改的操作，来讲述 RCU 的原理，以及介绍 Linux kernel 中相关的 API（基于 Linux v3.4.0 的源码）
+
+
+文件对象
+struct file {
+
+}
+
+分配file实例, 带自身缓存, 并将实例用基本数据预先初始化
+get_empty_filp
+
+提高初始限制
+static int expand_fdtable
+
+
+files_fdt指针切换到新实例
+rcu_assign_pointer
+
+
+文件操作
+struct file_operations {
+
+将文件内容映射到进程虚拟地址空间
+int (*mmap) (struct file *, struct vm_area_struct *);
+
+readv和writev
+向量读取和写入readv,writev:
+快速分散-聚集,提高性能
+
+
+块设备文件操作
+const struct file_operations def_blk_fops
+
+
+vfs层通用辅助函数: generic_xxx, 如generic_file_xxx
+
+
+umask: 标准掩码, 用于设置新文件权限
+
+
+struct fs_struct {
+
+
+
+vfs命名空间
+
+
+目录项缓存dentry缓存
+建立文件名和相关inode之间的关联
+
+d_op 对dentry对象的各种操作, 函数指针
+
+vfs请求 -> dentry -> 缓存
+散列表dentry_hashtable, lru最近最少使用, 宽限期
+
+
+prune_dcache 修剪缓存
+
+文件系统可以对dentry对象执行的操作(函数指针)
+struct dentry_operations {
+	int (*d_revalidate)(struct dentry *, struct nameidata *);  //网络文件系统确保一致性
+	int (*d_hash) (struct dentry *, struct qstr *);   //计算散列值, 该值用于将对象放置到dentry散列表中
+	int (*d_compare) (struct dentry *, struct qstr *, struct qstr *);
+	int (*d_delete)(struct dentry *);
+	void (*d_release)(struct dentry *);
+	void (*d_iput)(struct dentry *, struct inode *);   // 释放inode
+	char *(*d_dname)(struct dentry *, char *, int);
+};
+
+
+
+d_lookup
+根据文件名搜索dentry对象
+
+
+超级块结构
+struct super_block {
+
+操作函数集合
+struct super_operations {
+
+
+共享子树
+
+伪文件系统
+
+
+

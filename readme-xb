@@ -1,0 +1,45 @@
+struct irq_desc irq_desc[NR_IRQS] __cacheline_aligned_in_smp = {
+	[0 ... NR_IRQS-1] = {
+		.status = IRQ_DISABLED,
+		.chip = &no_irq_chip,
+		.handle_irq = handle_bad_irq,
+		.depth = 1,
+		.lock = __RAW_SPIN_LOCK_UNLOCKED(irq_desc->lock),
+	}
+};
+
+
+
+中断数组结构, 中断描述符
+struct irq_desc
+
+查看中断控制器类型: cat /proc/interrupts
+
+内核熵池entropy pool, 
+
+中断电流处理, 边沿触发中断handle_edge_irq,  电平触发中断handle_level_irq, chip->eoi, 
+
+注册和初始化irq:  do_IRQ
+
+
+调用高层isr, handle_IRQ_event,
+
+dev_id,或者irq编号, 区分多设备
+
+
+软中断, 
+struct softirq_action
+{
+	void	(*action)(struct softirq_action *);
+};
+
+软中断守护进程, ksoftirqd, 
+
+
+tasklet, 工作队列, 等待队列, 完成量, 
+
+
+文件系统:
+挂载文件系统
+sys_mount fs/namespace.c  SYSCALL_DEFINE5(mount, 
+  do_mount(kernel_dev
